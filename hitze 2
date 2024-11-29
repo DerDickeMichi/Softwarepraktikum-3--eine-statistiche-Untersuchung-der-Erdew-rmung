@@ -1,0 +1,201 @@
+from datetime import datetime
+import matplotlib.pyplot as plt
+from meteostat import Point, Daily
+import pandas as pd
+
+# Definiere die Koordinaten für Hamburg
+hamburg = Point(53.5511, 9.9937)  # Breitengrad und Längengrad von Hamburg
+
+# Definiere den Datumsbereich für die Analyse (z.B. die letzten 30 Jahre)
+start_date = datetime(2000, 1, 1)
+end_date = datetime(2023, 1, 1)
+
+# Abrufen der täglichen Wetterdaten für Hamburg im definierten Zeitraum
+data = Daily(hamburg, start_date, end_date)
+data = data.fetch()
+
+# Überprüfen Sie die ersten Zeilen der Daten, um sicherzustellen, dass sie korrekt geladen wurden
+data.head()
+
+# Zeitperiode definieren
+start = datetime(2000, 1, 1)
+end = datetime(2023, 1, 1)
+
+# Standort: Hamburg, Deutschland
+hamburg = Point(53.5511, 9.9937)  # Breite, Länge
+
+# Wetterdaten abrufen
+data = Daily(hamburg, start, end)
+data = data.fetch()
+
+# Plot erstellen
+data.plot(y=['tavg', 'tmin', 'tmax'], title="Tägliche Temperaturen in Hamburg (2022)")
+plt.xlabel('Datum')
+plt.ylabel('Temperatur (°C)')
+plt.grid(True)
+plt.show()
+
+# Definiere den Schwellenwert für ein extremes Wetterereignis in Bezug auf hohe Temperaturen
+extreme_temp_threshold = 30  # Beispiel: Tage mit Temperaturen über 30°C
+
+# Füge eine Spalte hinzu, die ein extremes Wetterereignis markiert (1, wenn Tmax über dem Schwellenwert, sonst 0)
+data['extreme_event'] = data['tmax'].apply(lambda x: 1 if x >= extreme_temp_threshold else 0)
+
+# Resample die Daten nach Jahr, um die Anzahl der extremen Ereignisse pro Jahr zu summieren
+extreme_events_per_year = data.resample('YE').sum()['extreme_event']
+
+# Plot der Ergebnisse
+plt.figure(figsize=(10, 6))
+plt.plot(extreme_events_per_year.index.year, extreme_events_per_year, marker='o', color='r')
+plt.title('Jährliche Häufigkeit von Tagen mit Extremtemperaturen in Hamburg (Tmax > 30°C)')
+plt.xlabel('Jahr')
+plt.ylabel('Anzahl der Tage mit Extremtemperaturen')
+plt.grid(True)
+plt.show()
+
+# Wetterdaten initialisieren
+start = datetime(2000, 1, 1)
+end = datetime(2022, 12, 31)
+
+# Standort: Hamburg
+hamburg = Point(53.5511, 9.9937)
+data = Daily(hamburg, start, end).fetch()
+
+# Überprüfen, ob Daten geladen wurden
+if data.empty:
+    raise ValueError("Keine Wetterdaten gefunden. Bitte überprüfen Sie den Standort oder die Zeitperiode.")
+
+# Schwellenwert und Mindestdauer definieren
+heatwave_temp_threshold = 28  # Schwellenwert für Hitzewellen in °C
+heatwave_min_duration = 3     # Mindestdauer für eine Hitzewelle
+
+# Identifikation von Hitzewellen
+data['is_heatwave'] = (data['tmax'] >= heatwave_temp_threshold).astype(int)
+data['heatwave_group'] = (data['is_heatwave'] != data['is_heatwave'].shift()).cumsum()
+
+# Berechnung der Hitzewellendauer
+heatwave_durations = (
+    data[data['is_heatwave'] == 1]
+    .groupby('heatwave_group')
+    .size()
+    .reset_index(name='duration')
+)
+
+# Filterung nach Mindestdauer
+heatwave_durations = heatwave_durations[heatwave_durations['duration'] >= heatwave_min_duration]
+
+# Gruppierung nach Jahr
+data['year'] = data.index.year
+heatwave_durations = heatwave_durations.merge(
+    data[['year', 'heatwave_group']].drop_duplicates(), 
+    on='heatwave_group', 
+    how='left'
+)
+avg_heatwave_duration_per_year = heatwave_durations.groupby('year')['duration'].mean()
+
+# Plotten der Ergebnisse
+plt.figure(figsize=(12, 6))
+plt.plot(avg_heatwave_duration_per_year.index, avg_heatwave_duration_per_year, marker='o', color='orange')
+plt.title('Durchschnittliche Dauer der Hitzewellen pro Jahr in Hamburg\n(Hitzewelle = Tmax > 28°C, mindestens 3 Tage)', fontsize=14)
+plt.xlabel('Jahr', fontsize=12)
+plt.ylabel('Durchschnittliche Dauer der Hitzewelle (Tage)', fontsize=12)
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+import pandas as pd
+from meteostat import Stations, Daily
+from datetime import datetime
+import matplotlib.pyplot as plt
+
+# 1. Wähle eine Wetterstation aus
+start_date = datetime(2020, 1, 1)
+end_date = datetime(2023, 1, 1)
+
+# Finde Stationen in einem bestimmten Gebiet (z. B. Berlin)
+stations = Stations()
+stations = stations.nearby(52.5200, 13.4050)  # Breiten- und Längengrad von Berlin
+station = stations.fetch(1)  # Wähle die nächstgelegene Station
+station_id = station.index[0]
+
+# 2. Hole Wetterdaten
+data = Daily(station_id, start_date, end_date)
+data = data.fetch()
+
+# Daten vorbereiten: Temperatur in °C und eine Spalte für Extremwetter (Beispiel)
+data['temp'] = data['tavg']  # Durchschnittstemperatur
+data['extreme'] = (data['prcp'] > 50) | (data['wspd'] > 20)  # Extremwetterkriterien: starker Regen oder Wind
+data['date'] = data.index
+
+# 3. Definiere eine Hitzewelle (z. B. Temperatur > 30°C für 3 Tage in Folge)
+data['hitzewelle'] = (data['temp'] > 30).rolling(window=3).sum() >= 3
+
+# 4. Markiere Tage nach einer Hitzewelle
+data['nach_hitzewelle'] = data['hitzewelle'].shift(1).rolling(window=7, min_periods=1).max().fillna(0)
+
+# 5. Wahrscheinlichkeitsberechnung
+extreme_nach_hitzewelle = data[(data['nach_hitzewelle'] == 1) & (data['extreme'] == True)]
+extreme_gesamt = data[data['extreme'] == True]
+
+wahrscheinlichkeit = len(extreme_nach_hitzewelle) / len(extreme_gesamt) if len(extreme_gesamt) > 0 else 0
+
+print(f"Die Wahrscheinlichkeit, dass ein Extremwetterereignis auf eine Hitzewelle folgt, beträgt: {wahrscheinlichkeit:.2%}")
+
+# 6. Visualisierung
+plt.figure(figsize=(12, 6))
+plt.plot(data['date'], data['temp'], label='Temperatur (°C)', color='blue')
+plt.scatter(data[data['hitzewelle']]['date'], data[data['hitzewelle']]['temp'], color='red', label='Hitzewelle')
+plt.scatter(data[data['extreme']]['date'], data[data['extreme']]['temp'], color='orange', label='Extremwetter')
+plt.title("Temperatur, Hitzewellen und Extremwetter")
+plt.xlabel("Datum")
+plt.ylabel("Temperatur (°C)")
+plt.legend()
+plt.show()
+
+import pandas as pd
+from meteostat import Stations, Daily
+from datetime import datetime
+
+# 1. Zeitraum und Wetterstation festlegen
+start_date = datetime(2020, 1, 1)
+end_date = datetime(2023, 1, 1)
+
+# Finde Stationen in der Nähe (z. B. Berlin, Deutschland)
+stations = Stations()
+stations = stations.nearby(52.5200, 13.4050)  # Koordinaten von Berlin
+station = stations.fetch(1)  # Nächstgelegene Station auswählen
+station_id = station.index[0]
+
+# 2. Wetterdaten abrufen
+data = Daily(station_id, start_date, end_date)
+data = data.fetch()
+
+# 3. Datenaufbereitung
+data['date'] = data.index
+data['temp'] = data['tavg']  # Durchschnittstemperatur
+data['extreme'] = (data['prcp'] > 50) | (data['wspd'] > 20)  # Extremwetter: starker Regen oder Wind
+
+# Definiere Hitzewelle (z. B. 3 Tage in Folge mit > 30°C)
+data['hitzewelle'] = (data['temp'] > 30).rolling(window=3).sum() >= 3
+
+# Markiere Tage nach einer Hitzewelle (z. B. 7 Tage danach)
+data['nach_hitzewelle'] = data['hitzewelle'].shift(1).rolling(window=7, min_periods=1).max().fillna(0)
+
+# 4. Filtere relevante Daten
+extreme_nach_hitzewelle = data[(data['nach_hitzewelle'] == 1) & (data['extreme'] == True)]
+extreme_gesamt = data[data['extreme'] == True]
+
+wahrscheinlichkeit = len(extreme_nach_hitzewelle) / len(extreme_gesamt) if len(extreme_gesamt) > 0 else 0
+
+# 5. Ausgabe als Tabelle
+tabelle = data[['date', 'temp', 'hitzewelle', 'nach_hitzewelle', 'extreme']].copy()
+tabelle.columns = ['Datum', 'Temperatur (°C)', 'Hitzewelle', 'Nach Hitzewelle', 'Extremwetter']
+
+# 6. Ergebnis anzeigen
+print(f"Die Wahrscheinlichkeit, dass ein Extremwetterereignis auf eine Hitzewelle folgt, beträgt: {wahrscheinlichkeit:.2%}")
+print("\nTabelle der Wetterereignisse:")
+print(tabelle.head(20))  # Zeige die ersten 20 Zeilen der Tabelle
+
+# 7. Tabelle in eine CSV speichern (optional)
+tabelle.to_csv('wetteranalyse.csv', index=False)
