@@ -1,0 +1,49 @@
+from meteostat import Point, Daily
+from datetime import datetime
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy import stats
+
+# Set the location for Hamburg
+hamburg = Point(53.550341, 10.000654)
+
+# Define the time period (1980 - 2023) as datetime objects
+start = datetime(1980, 1, 1)
+end = datetime(2023, 12, 31)
+
+# Retrieve daily weather data for Hamburg
+data = Daily(hamburg, start, end)
+data = data.fetch()
+
+# Check if data is available
+if not data.empty:
+    # Add a year column to group by year
+    data['year'] = data.index.year
+
+    # Calculate the annual average temperature
+    annual_avg_temp = data.groupby('year')['tavg'].mean()
+
+    # Perform linear regression on the annual average temperatures
+    years = annual_avg_temp.index
+    temps = annual_avg_temp.values
+    slope, intercept, r_value, p_value, std_err = stats.linregress(years, temps)
+
+    # Calculate the trendline values
+    trendline = slope * years + intercept
+
+    # Plot the data
+    plt.figure(figsize=(12, 6))
+    plt.plot(annual_avg_temp.index, annual_avg_temp, marker='o', linestyle='-', color='b', label='Jahresdurchschnitt')
+    plt.plot(years, trendline, linestyle='--', color='r', label=f'Trendlinie (Steigung = {slope:.2f})')
+    plt.title('Jährliche Durchschnittstemperatur in Hamburg (1980-2023)', fontsize=14)
+    plt.xlabel('Jahr', fontsize=12)
+    plt.ylabel('Temperatur (°C)', fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend()
+    plt.tight_layout()
+
+    # Show the plot
+    plt.show()
+
+else:
+    print("Keine Wetterdaten für den angegebenen Zeitraum verfügbar.")
